@@ -9,7 +9,7 @@ import Input from '../Input/Input';
 
 import './Chat.css';
 
-const ENDPOINT = 'https://project-chat-application.herokuapp.com/';
+const ENDPOINT =  'http://localhost:5000';
 
 let socket;
 
@@ -33,7 +33,7 @@ const Chat = ({ location }) => {
         alert(error);
       }
     });
-  }, [ENDPOINT, location.search]);
+  }, [location.search]);
   
   useEffect(() => {
     socket.on('message', message => {
@@ -46,12 +46,18 @@ const Chat = ({ location }) => {
 }, []);
 
   const sendMessage = (event) => {
-    event.preventDefault();
+  event.preventDefault();
+  console.log('Send button clicked. Message:', message);
 
-    if(message) {
-      socket.emit('sendMessage', message, () => setMessage(''));
-    }
+  if (message) {
+    socket.emit('sendMessage', message, () => {
+      console.log('Message sent, clearing input');
+      setMessage('');
+    });
+  } else {
+    console.log('Message is empty, not sending');
   }
+}
 
   return (
     <div className="outerContainer">
