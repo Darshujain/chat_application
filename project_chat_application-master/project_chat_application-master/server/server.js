@@ -4,7 +4,6 @@ const http = require('http');
 const cors = require('cors');
 require('dotenv').config();
 const { Configuration, OpenAIApi } = require("openai");
-
 const { addUser, removeUser, getUser, getUsersInRoom } = require('./users');
 
 const app = express();
@@ -25,6 +24,9 @@ const configuration = new Configuration({
 const openai = new OpenAIApi(configuration);
 
 io.on('connection', (socket) => {
+  console.log("New connection:", socket.id);
+
+  // User joining
   socket.on('join', ({ name, room }, callback) => {
     const { error, user } = addUser({ id: socket.id, name, room });
 
@@ -33,42 +35,53 @@ io.on('connection', (socket) => {
     socket.join(user.room);
 
     socket.emit('message', { user: 'bot', text: `Hi ${user.name}! 👋` });
-    socket.broadcast.to(user.room).emit('message', { user: 'bot', text: `${user.name} has joined!` });
+    socket.broadcast
+      .to(user.room)
+      .emit('message', { user: 'bot', text: `${user.name} has joined!` });
 
-    io.to(user.room).emit('roomData', { room: user.room, users: getUsersInRoom(user.room) });
+    io.to(user.room).emit('roomData', {
+      room: user.room,
+      users: getUsersInRoom(user.room),
+    });
 
     callback();
   });
 
+  // Message send
   socket.on('sendMessage', async (message, callback) => {
     const user = getUser(socket.id);
 
-    if (user) {
-      // User ka message send karo
-      io.to(user.room).emit('message', { user: user.name, text: message });
-
-      try {
-        // AI se real answer lo
-        const aiResponse = await openai.createChatCompletion({
-          model: "gpt-3.5-turbo",
-          messages: [
-            { role: "system", content: "You are a friendly chatbot. Reply naturally to the user's message." },
-            { role: "user", content: message }
-          ],
-        });
-
-        const botReply = aiResponse.data.choices[0].message.content;
-
-        io.to(user.room).emit('message', { user: 'bot', text: botReply });
-      } catch (error) {
-        console.error("AI error:", error);
-        io.to(user.room).emit('message', { user: 'bot', text: "Sorry, I couldn't process that 😅" });
-      }
+    if (!user) {
+      console.log("⚠️ User not found for socket:", socket.id);
+      if (callback) callback("User not found");
+      return;
     }
 
-    callback();
+    io.to(user.room).emit('message', { user: user.name, text: message });
+
+    try {
+      const aiResponse = await openai.createChatCompletion({
+        model: "gpt-3.5-turbo",
+        messages: [
+          {
+            role: "system",
+            content: "You are a friendly chatbot. Reply naturally to the user's message.",
+          },
+          { role: "user", content: message },
+        ],
+      });
+
+      const botReply = aiResponse.data.choices[0].message.content;
+      io.to(user.room).emit('message', { user: 'bot', text: botReply });
+    } catch (error) {
+      console.error("AI error:", error.message);
+      io.to(user.room).emit('message', { user: 'bot', text: "⚠️ Sorry, AI is not responding." });
+    }
+
+    if (callback) callback();
   });
 
+  // Disconnect
   socket.on('disconnect', () => {
     const user = removeUser(socket.id);
 
@@ -79,4 +92,4 @@ io.on('connection', (socket) => {
   });
 });
 
-server.listen(5000, () => console.log(`Server running on port 5000`));
+server.listen(5000, () => console.log(`🚀 Server running on port 5000`));
